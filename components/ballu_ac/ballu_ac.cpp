@@ -62,8 +62,11 @@ void BalluAcClimate::parse_status_frame_(const uint8_t *data) {
       break;
   }
 
-  ESP_LOGD(TAG, "status: mode_byte=0x%02X current=%.1f target=%.0f", data[MODE_POS],
-           this->current_temperature, this->target_temperature);
+  char hex[RX_FRAME_SIZE * 3 + 1] = {0};
+  for (size_t i = 0; i < RX_FRAME_SIZE; i++)
+    sprintf(hex + i * 3, "%02X ", data[i]);
+  ESP_LOGD(TAG, "status: mode_byte=0x%02X current=%.1f target=%.0f full=%s", data[MODE_POS],
+           this->current_temperature, this->target_temperature, hex);
   this->publish_state();
 }
 
