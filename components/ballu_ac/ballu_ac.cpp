@@ -130,6 +130,11 @@ climate::ClimateTraits BalluAcClimate::traits() {
       climate::CLIMATE_FAN_LOW,
       climate::CLIMATE_FAN_MEDIUM,
       climate::CLIMATE_FAN_HIGH,
+      // Временно для диагностики TX byte10 кодов 5/6 (tclac: FOCUS=5,
+      // MIDDLE=6) — убрать после того как подберём правильные значения для
+      // QUIET/HIGH (см. project memory ballu-ac-protocol-findings).
+      climate::CLIMATE_FAN_FOCUS,
+      climate::CLIMATE_FAN_MIDDLE,
   });
   traits.set_visual_min_temperature(16.0f);
   traits.set_visual_max_temperature(31.0f);
@@ -218,6 +223,14 @@ void BalluAcClimate::send_control_frame_() {
         break;
       case climate::CLIMATE_FAN_HIGH:
         tx[10] |= 0b00000111;
+        break;
+      // Диагностика: tclac's FOCUS(5)/MIDDLE(6) коды byte10, ещё не
+      // сопоставлены с реальными RX-нибблами на этом железе.
+      case climate::CLIMATE_FAN_FOCUS:
+        tx[10] |= 0b00000101;
+        break;
+      case climate::CLIMATE_FAN_MIDDLE:
+        tx[10] |= 0b00000110;
         break;
       case climate::CLIMATE_FAN_AUTO:
       default:
