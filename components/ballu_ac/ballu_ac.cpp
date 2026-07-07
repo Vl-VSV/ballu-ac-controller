@@ -13,26 +13,67 @@ void BalluAcClimate::loop() {
     uint8_t byte;
     this->read_byte(&byte);
 
-    if (this->rx_pos_ == 0 && byte != FRAME_HEADER_0) {
-      // Не заголовок пакета — игнорируем шум/рассинхронизацию.
+    if (this->rx_pos_ == 0 && byte != FRAME_START) {
+      // Не начало пакета — игнорируем шум/рассинхронизацию.
       continue;
     }
     this->rx_buffer_[this->rx_pos_++] = byte;
 
     if (this->rx_pos_ == RX_FRAME_SIZE) {
-      char hex[RX_FRAME_SIZE * 3 + 1] = {0};
-      for (size_t i = 0; i < RX_FRAME_SIZE; i++)
-        sprintf(hex + i * 3, "%02X ", this->rx_buffer_[i]);
-      ESP_LOGD(TAG, "RX frame: %s", hex);
+      uint8_t checksum = 0;
+      for (size_t i = 0; i < RX_FRAME_SIZE - 1; i++)
+        checksum ^= this->rx_buffer_[i];
+
+      if (checksum != this->rx_buffer_[RX_FRAME_SIZE - 1]) {
+        ESP_LOGW(TAG, "RX checksum mismatch: computed 0x%02X, got 0x%02X", checksum,
+                 this->rx_buffer_[RX_FRAME_SIZE - 1]);
+      } else {
+        this->parse_status_frame_(this->rx_buffer_);
+      }
       this->rx_pos_ = 0;
     }
   }
 }
 
+void BalluAcClimate::parse_status_frame_(const uint8_t *data) {
+  uint16_t raw_current_temp = (data[CURRENT_TEMP_POS_HI] << 8) | data[CURRENT_TEMP_POS_LO];
+  this->current_temperature = ((raw_current_temp / 374.0f) - 32.0f) / 1.8f;
+
+  this->target_temperature = (data[TARGET_TEMP_POS] & TARGET_TEMP_MASK) + TARGET_TEMP_BASE;
+
+  switch (data[MODE_POS] & MODE_MASK) {
+    case MODE_COOL:
+      this->mode = climate::CLIMATE_MODE_COOL;
+      break;
+    case MODE_HEAT:
+      this->mode = climate::CLIMATE_MODE_HEAT;
+      break;
+    case MODE_DRY:
+      this->mode = climate::CLIMATE_MODE_DRY;
+      break;
+    case MODE_FAN_ONLY:
+      this->mode = climate::CLIMATE_MODE_FAN_ONLY;
+      break;
+    case MODE_AUTO:
+      this->mode = climate::CLIMATE_MODE_AUTO;
+      break;
+    default:
+      this->mode = climate::CLIMATE_MODE_OFF;
+      break;
+  }
+
+  ESP_LOGD(TAG, "status: mode_byte=0x%02X current=%.1f target=%.0f", data[MODE_POS],
+           this->current_temperature, this->target_temperature);
+  this->publish_state();
+}
+
 void BalluAcClimate::update() {
   // Пакет опроса статуса — формат из tclac (components/tclac/tclac.h,
-  // массив poll[]): заголовок BB 00 01, тип 04 (опрос), длина 02, данные 01 00,
-  // контрольная сумма BD.
+  // массив poll[]): BB 00 01, тип 04 (опрос), длина 02, данные 01 00,
+  // контрольная сумма BD. Работает как есть: кондиционер отвечает валидным
+  // RX-фреймом на этот TX-пакет несмотря на то, что RX-заголовок приходит в
+  // другом порядке байт (BB 01 00) — TX и RX, видимо, не обязаны совпадать
+  // побайтово в этой части, поэтому TX не менялся.
   static const uint8_t POLL[8] = {0xBB, 0x00, 0x01, 0x04, 0x02, 0x01, 0x00, 0xBD};
   ESP_LOGD(TAG, "sending poll request");
   this->write_array(POLL, sizeof(POLL));
