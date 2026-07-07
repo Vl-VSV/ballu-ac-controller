@@ -12,12 +12,30 @@ void BalluAcClimate::loop() {
   while (this->available()) {
     uint8_t byte;
     this->read_byte(&byte);
-    ESP_LOGD(TAG, "RX byte: 0x%02X", byte);
+
+    if (this->rx_pos_ == 0 && byte != FRAME_HEADER_0) {
+      // Не заголовок пакета — игнорируем шум/рассинхронизацию.
+      continue;
+    }
+    this->rx_buffer_[this->rx_pos_++] = byte;
+
+    if (this->rx_pos_ == RX_FRAME_SIZE) {
+      char hex[RX_FRAME_SIZE * 3 + 1] = {0};
+      for (size_t i = 0; i < RX_FRAME_SIZE; i++)
+        sprintf(hex + i * 3, "%02X ", this->rx_buffer_[i]);
+      ESP_LOGD(TAG, "RX frame: %s", hex);
+      this->rx_pos_ = 0;
+    }
   }
 }
 
 void BalluAcClimate::update() {
-  ESP_LOGD(TAG, "poll tick");
+  // Пакет опроса статуса — формат из tclac (components/tclac/tclac.h,
+  // массив poll[]): заголовок BB 00 01, тип 04 (опрос), длина 02, данные 01 00,
+  // контрольная сумма BD.
+  static const uint8_t POLL[8] = {0xBB, 0x00, 0x01, 0x04, 0x02, 0x01, 0x00, 0xBD};
+  ESP_LOGD(TAG, "sending poll request");
+  this->write_array(POLL, sizeof(POLL));
 }
 
 void BalluAcClimate::dump_config() {
