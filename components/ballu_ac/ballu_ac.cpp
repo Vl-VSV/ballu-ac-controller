@@ -150,70 +150,83 @@ void BalluAcClimate::control(const climate::ClimateCall &call) {
 }
 
 void BalluAcClimate::send_control_frame_() {
+  // Гипотеза №3: точная копия схемы tclac takeControl() — byte7 собирается
+  // суммой независимых флагов (beeper, display, power), а не одним "кодом
+  // режима" как в RX (см. project memory ballu-ac-protocol-findings — первые
+  // две гипотезы, включая переиспользование RX-кодировки, не сработали на
+  // реальном железе). У нас нет настроек beeper/display, поэтому оба
+  // выставляются постоянно включёнными, как рекомендует tclac для корректной
+  // работы. Позиции полей и битовые маски — прямая копия tclac.cpp,
+  // components/tclac/tclac.cpp:239-337 (takeControl()), не проверены отдельно
+  // от исходника — сам факт совпадения TX-формата с этим железом ещё не
+  // подтверждён, требует проверки на живом кондиционере.
   uint8_t tx[TX_FRAME_SIZE] = {0};
 
-  // Гипотеза №2: TX использует ту же кодировку полей, что подтверждённый RX
-  // (byte7 = полный код режима MODE_*, byte8 = (скорость вентилятора в high
-  // nibble) | (температура в low nibble)) — а не отдельную TX-схему из tclac,
-  // которая на этом железе не сработала (см. project memory
-  // ballu-ac-protocol-findings). Заголовок/тип пакета пока оставлены как в
-  // tclac (0x03 = управление) — это единственное, что пока не проверено иначе.
   tx[0] = 0xBB;
   tx[1] = 0x00;
   tx[2] = 0x01;
-  tx[3] = 0x03;  // 0x03 = управление (tclac: 0x04 = опрос)
+  tx[3] = 0x03;  // 0x03 = управление, 0x04 = опрос
   tx[4] = 0x20;
   tx[5] = 0x03;
   tx[6] = 0x01;
+  tx[12] = 0x00;
   tx[13] = 0x01;
 
+  const bool beeper_on = true;
+  const bool display_on = this->mode != climate::CLIMATE_MODE_OFF;
+
+  if (beeper_on)
+    tx[7] |= 0b00100000;
+  if (display_on)
+    tx[7] |= 0b01000000;
+
   switch (this->mode) {
-    case climate::CLIMATE_MODE_COOL:
-      tx[MODE_POS] = MODE_COOL;
-      break;
-    case climate::CLIMATE_MODE_HEAT:
-      tx[MODE_POS] = MODE_HEAT;
-      break;
-    case climate::CLIMATE_MODE_DRY:
-      tx[MODE_POS] = MODE_DRY;
-      break;
-    case climate::CLIMATE_MODE_FAN_ONLY:
-      tx[MODE_POS] = MODE_FAN_ONLY;
+    case climate::CLIMATE_MODE_OFF:
       break;
     case climate::CLIMATE_MODE_AUTO:
-      tx[MODE_POS] = MODE_AUTO;
+      tx[7] |= 0b00000100;
+      tx[8] |= 0b00001000;
       break;
-    case climate::CLIMATE_MODE_OFF:
-    default:
-      tx[MODE_POS] = 0;
+    case climate::CLIMATE_MODE_COOL:
+      tx[7] |= 0b00000100;
+      tx[8] |= 0b00000011;
+      break;
+    case climate::CLIMATE_MODE_DRY:
+      tx[7] |= 0b00000100;
+      tx[8] |= 0b00000010;
+      break;
+    case climate::CLIMATE_MODE_FAN_ONLY:
+      tx[7] |= 0b00000100;
+      tx[8] |= 0b00000111;
+      break;
+    case climate::CLIMATE_MODE_HEAT:
+      tx[7] |= 0b00000100;
+      tx[8] |= 0b00000001;
       break;
   }
 
-  uint8_t fan_nibble = FAN_SPEED_AUTO;
   if (this->fan_mode.has_value()) {
     switch (*this->fan_mode) {
       case climate::CLIMATE_FAN_QUIET:
-        fan_nibble = FAN_SPEED_QUIET;
+        tx[8] |= 0b10000000;
         break;
       case climate::CLIMATE_FAN_LOW:
-        fan_nibble = FAN_SPEED_LOW;
+        tx[10] |= 0b00000001;
         break;
       case climate::CLIMATE_FAN_MEDIUM:
-        fan_nibble = FAN_SPEED_MEDIUM;
+        tx[10] |= 0b00000011;
         break;
       case climate::CLIMATE_FAN_HIGH:
-        fan_nibble = FAN_SPEED_HIGH;
+        tx[10] |= 0b00000111;
         break;
       case climate::CLIMATE_FAN_AUTO:
       default:
-        fan_nibble = FAN_SPEED_AUTO;
         break;
     }
   }
-  uint8_t temp_nibble = static_cast<uint8_t>(this->target_temperature) - TARGET_TEMP_BASE;
-  tx[TARGET_TEMP_POS] = fan_nibble | (temp_nibble & TARGET_TEMP_MASK);
 
-  tx[TX_FRAME_SIZE - 1] = 0;
+  tx[9] = 31 - static_cast<int>(this->target_temperature);
+
   uint8_t checksum = 0;
   for (size_t i = 0; i < TX_FRAME_SIZE - 1; i++)
     checksum ^= tx[i];
