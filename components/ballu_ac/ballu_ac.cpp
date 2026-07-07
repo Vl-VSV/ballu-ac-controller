@@ -62,6 +62,32 @@ void BalluAcClimate::parse_status_frame_(const uint8_t *data) {
       break;
   }
 
+  switch (data[TARGET_TEMP_POS] & FAN_SPEED_MASK) {
+    case FAN_SPEED_QUIET:
+      this->fan_mode = climate::CLIMATE_FAN_QUIET;
+      break;
+    case FAN_SPEED_LOW:
+      this->fan_mode = climate::CLIMATE_FAN_LOW;
+      break;
+    case FAN_SPEED_MEDIUM:
+      this->fan_mode = climate::CLIMATE_FAN_MEDIUM;
+      break;
+    case FAN_SPEED_HIGH:
+      this->fan_mode = climate::CLIMATE_FAN_HIGH;
+      break;
+    case FAN_SPEED_FOCUS:
+      this->fan_mode = climate::CLIMATE_FAN_FOCUS;
+      break;
+    case FAN_SPEED_AUTO:
+    default:
+      this->fan_mode = climate::CLIMATE_FAN_AUTO;
+      break;
+  }
+  // Турбо — отдельный флаг поверх скорости "5" (тот же код, что и обычная
+  // высокая скорость), сознательно отображаем турбо как ту же CLIMATE_FAN_HIGH.
+  if (data[TURBO_POS] & TURBO_BIT)
+    this->fan_mode = climate::CLIMATE_FAN_HIGH;
+
   char hex[RX_FRAME_SIZE * 3 + 1] = {0};
   for (size_t i = 0; i < RX_FRAME_SIZE; i++)
     sprintf(hex + i * 3, "%02X ", data[i]);
@@ -99,9 +125,11 @@ climate::ClimateTraits BalluAcClimate::traits() {
   });
   traits.set_supported_fan_modes({
       climate::CLIMATE_FAN_AUTO,
+      climate::CLIMATE_FAN_QUIET,
       climate::CLIMATE_FAN_LOW,
       climate::CLIMATE_FAN_MEDIUM,
       climate::CLIMATE_FAN_HIGH,
+      climate::CLIMATE_FAN_FOCUS,
   });
   traits.set_visual_min_temperature(16.0f);
   traits.set_visual_max_temperature(31.0f);

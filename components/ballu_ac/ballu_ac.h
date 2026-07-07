@@ -39,6 +39,25 @@ static const uint8_t TARGET_TEMP_BASE = 16;
 static const uint8_t CURRENT_TEMP_POS_HI = 17;
 static const uint8_t CURRENT_TEMP_POS_LO = 18;
 
+// Скорость вентилятора: high nibble байта 8 (ниже TARGET_TEMP_MASK).
+// Подтверждено пошаговым переключением каждой скорости на реальном пульте
+// (см. project memory ballu-ac-protocol-findings): значения не идут по
+// возрастанию мощности — это порядок, в котором кнопка на пульте их
+// перебирает, а не физическая шкала. "Турбо" — ОТДЕЛЬНЫЙ флаг (byte7 бит
+// 0x80), а не отдельный код здесь; при включённом турбо этот нибл совпадает
+// со значением обычной высокой скорости ("5"), поэтому turbo и "5"
+// сознательно отображаются в HA одинаково, как CLIMATE_FAN_HIGH.
+static const uint8_t FAN_SPEED_MASK = 0b11110000;
+static const uint8_t FAN_SPEED_AUTO = 0b10000000;    // код 0
+static const uint8_t FAN_SPEED_QUIET = 0b10010000;   // код 1 (пульт: "1")
+static const uint8_t FAN_SPEED_LOW = 0b10100000;     // код 2 (пульт: "3")
+static const uint8_t FAN_SPEED_HIGH = 0b10110000;    // код 3 (пульт: "5"/турбо)
+static const uint8_t FAN_SPEED_MEDIUM = 0b11000000;  // код 4 (пульт: "2")
+static const uint8_t FAN_SPEED_FOCUS = 0b11010000;   // код 5 (пульт: "4")
+
+static const uint8_t TURBO_POS = MODE_POS;
+static const uint8_t TURBO_BIT = 0b10000000;
+
 class BalluAcClimate : public climate::Climate, public uart::UARTDevice, public PollingComponent {
  public:
   BalluAcClimate() : PollingComponent(5000) {}
