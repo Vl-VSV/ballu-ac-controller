@@ -130,11 +130,6 @@ climate::ClimateTraits BalluAcClimate::traits() {
       climate::CLIMATE_FAN_LOW,
       climate::CLIMATE_FAN_MEDIUM,
       climate::CLIMATE_FAN_HIGH,
-      // Временно для диагностики TX byte10 кодов 5/6 (tclac: FOCUS=5,
-      // MIDDLE=6) — убрать после того как подберём правильные значения для
-      // QUIET/HIGH (см. project memory ballu-ac-protocol-findings).
-      climate::CLIMATE_FAN_FOCUS,
-      climate::CLIMATE_FAN_MIDDLE,
   });
   traits.set_visual_min_temperature(16.0f);
   traits.set_visual_max_temperature(31.0f);
@@ -210,27 +205,25 @@ void BalluAcClimate::send_control_frame_() {
       break;
   }
 
+  // Скорость вентилятора через byte10 — значения подобраны экспериментально
+  // (см. project memory ballu-ac-protocol-findings): tclac's собственные коды
+  // byte10 (LOW=1,MEDIUM=3,HIGH=7) сдвигали реальную скорость на одну ступень
+  // вниз и tclac's отдельный "quiet"-бит на byte8 не работал вовсе — вместо
+  // этого подтверждено сравнением с честным RX-поллом после каждой команды:
+  // TX byte10=1->RX nibble 0x9(quiet), 3->0xA(low), 5->0xB(high), 7->0xD(medium).
   if (this->fan_mode.has_value()) {
     switch (*this->fan_mode) {
       case climate::CLIMATE_FAN_QUIET:
-        tx[8] |= 0b10000000;
-        break;
-      case climate::CLIMATE_FAN_LOW:
         tx[10] |= 0b00000001;
         break;
-      case climate::CLIMATE_FAN_MEDIUM:
+      case climate::CLIMATE_FAN_LOW:
         tx[10] |= 0b00000011;
         break;
-      case climate::CLIMATE_FAN_HIGH:
+      case climate::CLIMATE_FAN_MEDIUM:
         tx[10] |= 0b00000111;
         break;
-      // Диагностика: tclac's FOCUS(5)/MIDDLE(6) коды byte10, ещё не
-      // сопоставлены с реальными RX-нибблами на этом железе.
-      case climate::CLIMATE_FAN_FOCUS:
+      case climate::CLIMATE_FAN_HIGH:
         tx[10] |= 0b00000101;
-        break;
-      case climate::CLIMATE_FAN_MIDDLE:
-        tx[10] |= 0b00000110;
         break;
       case climate::CLIMATE_FAN_AUTO:
       default:
