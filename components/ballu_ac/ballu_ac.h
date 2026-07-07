@@ -60,6 +60,15 @@ static const uint8_t FAN_SPEED_MEDIUM = 0b11010000;  // код 5 (пульт: "4
 static const uint8_t TURBO_POS = MODE_POS;
 static const uint8_t TURBO_BIT = 0b10000000;
 
+// Формат TX-пакета (команда управления) взят из tclac (tclac.cpp,
+// takeControl()) как рабочая гипотеза — это ОТДЕЛЬНЫЙ формат от RX (заголовок,
+// тип 0x03, коды mode/fan в других позициях/масках), не проверен на реальном
+// железе, требует подтверждения на живом кондиционере после первой отправки.
+static const uint8_t TX_MODE_POS = 7;
+static const uint8_t TX_FAN_POS = 8;
+static const uint8_t TX_TEMP_POS = 9;
+static const uint8_t TX_FAN_LOW_POS = 10;
+
 class BalluAcClimate : public climate::Climate, public uart::UARTDevice, public PollingComponent {
  public:
   BalluAcClimate() : PollingComponent(5000) {}
@@ -73,6 +82,7 @@ class BalluAcClimate : public climate::Climate, public uart::UARTDevice, public 
   climate::ClimateTraits traits() override;
   void control(const climate::ClimateCall &call) override;
   void parse_status_frame_(const uint8_t *data);
+  void send_control_frame_();
 
   uint8_t rx_buffer_[RX_FRAME_SIZE];
   size_t rx_pos_{0};

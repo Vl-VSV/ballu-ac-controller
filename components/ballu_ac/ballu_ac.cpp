@@ -146,6 +146,78 @@ void BalluAcClimate::control(const climate::ClimateCall &call) {
     this->fan_mode = *call.get_fan_mode();
 
   this->publish_state();
+  this->send_control_frame_();
+}
+
+void BalluAcClimate::send_control_frame_() {
+  uint8_t tx[TX_FRAME_SIZE] = {0};
+
+  tx[0] = 0xBB;
+  tx[1] = 0x00;
+  tx[2] = 0x01;
+  tx[3] = 0x03;  // 0x03 = управление (tclac: 0x04 = опрос)
+  tx[4] = 0x20;
+  tx[5] = 0x03;
+  tx[6] = 0x01;
+  tx[13] = 0x01;
+
+  if (this->mode != climate::CLIMATE_MODE_OFF) {
+    tx[TX_MODE_POS] |= 0b00000100;  // power on
+    switch (this->mode) {
+      case climate::CLIMATE_MODE_AUTO:
+        tx[TX_FAN_POS] |= 0b00001000;
+        break;
+      case climate::CLIMATE_MODE_COOL:
+        tx[TX_FAN_POS] |= 0b00000011;
+        break;
+      case climate::CLIMATE_MODE_DRY:
+        tx[TX_FAN_POS] |= 0b00000010;
+        break;
+      case climate::CLIMATE_MODE_FAN_ONLY:
+        tx[TX_FAN_POS] |= 0b00000111;
+        break;
+      case climate::CLIMATE_MODE_HEAT:
+        tx[TX_FAN_POS] |= 0b00000001;
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (this->fan_mode.has_value()) {
+    switch (*this->fan_mode) {
+      case climate::CLIMATE_FAN_QUIET:
+        tx[TX_FAN_POS] |= 0b10000000;
+        break;
+      case climate::CLIMATE_FAN_LOW:
+        tx[TX_FAN_LOW_POS] |= 0b00000001;
+        break;
+      case climate::CLIMATE_FAN_MEDIUM:
+        tx[TX_FAN_LOW_POS] |= 0b00000011;
+        break;
+      case climate::CLIMATE_FAN_HIGH:
+        tx[TX_FAN_LOW_POS] |= 0b00000111;
+        break;
+      case climate::CLIMATE_FAN_AUTO:
+      default:
+        break;
+    }
+  }
+
+  tx[TX_TEMP_POS] = 31 - static_cast<int>(this->target_temperature);
+
+  tx[TX_FRAME_SIZE - 1] = 0;
+  uint8_t checksum = 0;
+  for (size_t i = 0; i < TX_FRAME_SIZE - 1; i++)
+    checksum ^= tx[i];
+  tx[TX_FRAME_SIZE - 1] = checksum;
+
+  char hex[TX_FRAME_SIZE * 3 + 1] = {0};
+  for (size_t i = 0; i < TX_FRAME_SIZE; i++)
+    sprintf(hex + i * 3, "%02X ", tx[i]);
+  ESP_LOGD(TAG, "sending control frame: %s", hex);
+
+  this->write_array(tx, TX_FRAME_SIZE);
 }
 
 }  // namespace ballu_ac
