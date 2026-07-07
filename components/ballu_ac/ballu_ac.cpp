@@ -75,9 +75,6 @@ void BalluAcClimate::parse_status_frame_(const uint8_t *data) {
     case FAN_SPEED_HIGH:
       this->fan_mode = climate::CLIMATE_FAN_HIGH;
       break;
-    case FAN_SPEED_FOCUS:
-      this->fan_mode = climate::CLIMATE_FAN_FOCUS;
-      break;
     case FAN_SPEED_AUTO:
     default:
       this->fan_mode = climate::CLIMATE_FAN_AUTO;
@@ -129,7 +126,6 @@ climate::ClimateTraits BalluAcClimate::traits() {
       climate::CLIMATE_FAN_LOW,
       climate::CLIMATE_FAN_MEDIUM,
       climate::CLIMATE_FAN_HIGH,
-      climate::CLIMATE_FAN_FOCUS,
   });
   traits.set_visual_min_temperature(16.0f);
   traits.set_visual_max_temperature(31.0f);
