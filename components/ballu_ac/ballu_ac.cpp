@@ -76,8 +76,12 @@ void BalluAcClimate::parse_status_frame_(const uint8_t *data) {
       this->fan_mode = climate::CLIMATE_FAN_HIGH;
       break;
     case FAN_SPEED_AUTO:
-    default:
       this->fan_mode = climate::CLIMATE_FAN_AUTO;
+      break;
+    // Код 4 (пульт: "2", нибл 0xC) не отображается отдельным HA-режимом —
+    // ближе всего к LOW, поэтому мапим сюда вместо AUTO.
+    default:
+      this->fan_mode = climate::CLIMATE_FAN_LOW;
       break;
   }
   // Турбо — отдельный флаг поверх скорости "5" (тот же код, что и обычная
